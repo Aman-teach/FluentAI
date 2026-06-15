@@ -822,6 +822,7 @@ function curKey(){ return (settings.keys && settings.keys[settings.provider]) ||
 let vocab = LS.get('es_vocab', []);
 let history = []; // {role, content} for the AI
 let activeUtterance = null; // Prevent Chrome garbage collection of speaking voice
+let autoListenTimer = null;
 
 const $ = id => document.getElementById(id);
 const PROVIDERS = {
@@ -982,7 +983,7 @@ function speak(text){
   activeUtterance.onend = () => { 
     setOrb(''); 
     activeUtterance = null; // Free memory reference after finished
-    if(handsfree) setTimeout(()=>startListen(),350); 
+    if(handsfree) queueHandsfreeListen(350); 
   };
   
   activeUtterance.onerror = (e) => { 
@@ -993,6 +994,7 @@ function speak(text){
     if (e.error && e.error !== 'interrupted') {
       toast('TTS Speech Error: ' + e.error);
     }
+    if(handsfree) queueHandsfreeListen(700);
   };
   
   // Give Chrome more time to recover (150ms) if we had to cancel, otherwise queue quickly (30ms)
@@ -1005,6 +1007,16 @@ function speak(text){
     } catch(err) {
       setOrb('');
       toast('TTS Launch Failed: ' + err.message);
+    }
+  }, delay);
+}
+
+function queueHandsfreeListen(delay=450){
+  if(!handsfree) return;
+  clearTimeout(autoListenTimer);
+  autoListenTimer = setTimeout(() => {
+    if(handsfree && !listening) {
+      try { startListen(); } catch(e) {}
     }
   }, delay);
 }
@@ -1022,26 +1034,38 @@ async function callAI(messages, expectJSON){
   if (curKey()) {
     headers['Authorization'] = 'Bearer ' + curKey();
   }
-  const res=await fetch((PROVIDERS[settings.provider]||PROVIDERS.nvidia).url,{
-    method:'POST',
-    headers: headers,
-    body:JSON.stringify({ model:settings.model, messages, temperature:0.5, max_tokens:500 })
-  });
-  if(!res.ok){
-    const t=await res.text();
-    if(res.status===401){
-      throw new Error("API key is invalid or missing. If you're hosting this app, make sure to add GEMINI_API_KEY / NVIDIA_API_KEY in your server environment variables, or enter your own key in Settings.");
+  let lastError = null;
+  for(let attempt=0; attempt<3; attempt++){
+    try{
+      const res=await fetch((PROVIDERS[settings.provider]||PROVIDERS.nvidia).url,{
+        method:'POST',
+        headers: headers,
+        body:JSON.stringify({ model:settings.model, messages, temperature:0.5, max_tokens:500 })
+      });
+      if(!res.ok){
+        const t=await res.text();
+        if(res.status===401){
+          throw new Error("API key is invalid or missing. If you're hosting this app, make sure to add GEMINI_API_KEY / NVIDIA_API_KEY in your server environment variables, or enter your own key in Settings.");
+        }
+        if(res.status===429){
+          throw new Error("Rate limit reached (429). The free model is busy.");
+        }
+        if(res.status===503){
+          throw new Error("Service temporarily overloaded (503).");
+        }
+        throw new Error('API '+res.status+' '+t.slice(0,120));
+      }
+      const data=await res.json();
+      return data.choices?.[0]?.message?.content?.trim() || '';
+    }catch(err){
+      lastError = err;
+      const msg = String(err && err.message ? err.message : err);
+      const retryable = /429|503|fetch|Failed to fetch|network|timeout/i.test(msg);
+      if(!retryable || attempt===2) break;
+      await new Promise(r=>setTimeout(r, 500 * (attempt + 1)));
     }
-    if(res.status===429){
-      throw new Error("Rate limit reached (429). The free model is busy. Please try again in a moment, select a different model in Settings, or use a paid key.");
-    }
-    if(res.status===503){
-      throw new Error("Service overloaded (503). Google's free servers are currently experiencing high traffic. Please select a different model (like Gemini 2.0 Flash or 1.5 Flash) in Settings, or try again in a few seconds.");
-    }
-    throw new Error('API '+res.status+' '+t.slice(0,120));
   }
-  const data=await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || '';
+  throw lastError || new Error('AI request failed');
 }
 
 function coachSystemPrompt(){
@@ -1174,8 +1198,11 @@ async function handleUserSpeech(text){
     $('coachStatus').textContent='Your turn — tap the mic to reply.';
     speak(reply);
   }catch(e){
-    setOrb(''); $('coachStatus').textContent='⚠️ '+e.message;
-    addAIBubble('⚠️ '+e.message+(curKey()?'':' — add your key in Settings.'));
+    const fallbackReply = 'I am having trouble connecting right now. Please try again in a moment.';
+    setOrb('');
+    $('coachStatus').textContent=fallbackReply;
+    addAIBubble(fallbackReply);
+    speak(fallbackReply);
   }
 }
 
@@ -1209,6 +1236,7 @@ function setOrb(state){
 function startListen(){
   if(!SR){ toast('Voice input needs Chrome or Edge'); return; }
   if(listening) return;
+  clearTimeout(autoListenTimer);
   recog=new SR(); recog.lang='en-US'; recog.interimResults=false; recog.maxAlternatives=1; recog.continuous=false;
   listening=true; setOrb('listening'); $('coachStatus').textContent='Listening... speak now';
   $('micBtn').innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></svg><span>Listening...</span>';
@@ -1220,6 +1248,7 @@ function startListen(){
 }
 function stopListen(){
   listening=false; setOrb('');
+  clearTimeout(autoListenTimer);
   $('micBtn').innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span>Tap to speak</span>';
   $('micBtn').classList.remove('rec');
   if(recog){ try{ recog.stop(); }catch(e){} }
@@ -1269,14 +1298,25 @@ function renderScenarios(){
   });
 }
 async function kickoff(){
-  if(settings.provider==='openrouter' && !curKey()){ addAIBubble('⚠️ Add your free API key in Settings to start talking.'); return; }
+  if(settings.provider==='openrouter' && !curKey()){
+    const fallbackReply = 'I need an API key in Settings before I can start this conversation.';
+    addAIBubble(fallbackReply);
+    $('coachStatus').textContent = fallbackReply;
+    return;
+  }
   setOrb('thinking');
   try{
     const msgs=[{role:'system',content:coachSystemPrompt()}, ...history];
     const out=parseAI(await callAI(msgs,true));
     history.push({role:'assistant',content:out.reply});
     addAIBubble(out.reply); $('coachStatus').textContent='Your turn — tap the mic.'; speak(out.reply);
-  }catch(e){ setOrb(''); addAIBubble('⚠️ '+e.message); }
+  }catch(e){
+    setOrb('');
+    const fallbackReply = 'I am having trouble starting the chat right now. Please try again in a moment.';
+    addAIBubble(fallbackReply);
+    $('coachStatus').textContent = fallbackReply;
+    speak(fallbackReply);
+  }
 }
 
 /* ============================================================

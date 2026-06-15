@@ -1083,6 +1083,12 @@ TOPIC & ROLEPLAY FLUIDITY:
 HOW TO TALK:
 - Respond naturally and substantively to the content of what the user says. Speak like a smart, friendly peer (1-3 sentences), followed by one natural question to keep the conversation going.
 
+PRONUNCIATION FEEDBACK:
+- You do not hear raw audio. You only see the transcript and any speech-recognition confidence note provided by the app.
+- Give 0-2 short pronunciation notes only when they are useful.
+- If the transcript contains repeated words, chopped words, or speech-recognition uncertainty, mention the likely pronunciation issue gently and give one simple mouth/tongue/consonant tip.
+- Keep pronunciation feedback brief and practical. Do not over-explain.
+
 EXTREMELY RIGOROUS COACHING & CORRECTIONS:
 - The learner wants continuous, highly rigorous feedback. You must analyze their input with extreme scrutiny for ANY grammatical errors, awkward word choices, incorrect prepositions, incorrect collocations, or unnatural structures.
 - IMPORTANT: You MUST correct stuttered/repetitive words, incomplete thoughts, tense errors, and poorly structured sentences. Do not let broken or stuttered speech pass as perfect.
@@ -1130,7 +1136,10 @@ Output JSON:
   "vocab": []
 }
 
-Return ONLY valid minified JSON, no markdown, exactly in this format. If you identify useful new vocabulary words in the learner's or your response, suggest them in the "vocab" list and include their "word", "phonetic" (IPA transcription e.g. /rɪˈzɪliənt/), and "meaning". Use empty arrays when there is nothing worth flagging.`;
+Return ONLY valid minified JSON, no markdown, exactly in this format:
+{"reply":"...","corrections":[{"original":"...","corrected":"...","note":"..."}],"pronunciation":[{"issue":"...","tip":"..."}],"vocab":[{"word":"...","phonetic":"...","meaning":"..."}]}
+
+If you identify useful new vocabulary words in the learner's or your response, suggest them in the "vocab" list and include their "word", "phonetic" (IPA transcription e.g. /rɪˈzɪliənt/), and "meaning". Use empty arrays when there is nothing worth flagging.`;
 }
 
 function parseAI(raw){
@@ -1138,7 +1147,53 @@ function parseAI(raw){
   let s=raw.trim().replace(/^```(json)?/i,'').replace(/```$/,'').trim();
   const a=s.indexOf('{'), b=s.lastIndexOf('}');
   if(a>=0 && b>a) s=s.slice(a,b+1);
-  try{ return JSON.parse(s); }catch(e){ return { reply: raw, corrections:[], vocab:[] }; }
+  try{ return JSON.parse(s); }catch(e){ return { reply: raw, corrections:[], pronunciation:[], vocab:[] }; }
+}
+
+function detectRepeatedWords(text){
+  const m = String(text || '').match(/\b(\w+)\b(?:\s+\1\b)+/i);
+  if(!m) return null;
+  return { original: m[0], corrected: m[1], note: 'Remove repeated words so the sentence sounds smoother.' };
+}
+
+function buildLocalCoachFallback(text, speechMeta={}){
+  const cleanText = String(text || '').trim();
+  const lower = cleanText.toLowerCase();
+  const corrections = [];
+  const pronunciation = [];
+
+  const repeated = detectRepeatedWords(cleanText);
+  if(repeated) corrections.push(repeated);
+
+  if(speechMeta.confidence != null && speechMeta.confidence < 0.8){
+    pronunciation.push({
+      issue: 'The speech recognizer was not fully confident about this sentence.',
+      tip: 'Slow down a little and finish the ends of your words clearly, especially consonants like t, d, s, k, and p.'
+    });
+  }
+
+  if(/\b(th|this|that|think|three)\b/i.test(cleanText)){
+    pronunciation.push({
+      issue: 'Possible /th/ sound opportunity.',
+      tip: 'Put your tongue lightly between your teeth and let the air flow gently for the /th/ sound.'
+    });
+  } else if(/\b(v|very|voice)\b/i.test(cleanText)){
+    pronunciation.push({
+      issue: 'Possible /v/ sound opportunity.',
+      tip: 'Keep your top teeth close to your bottom lip and let your voice vibrate for /v/.'
+    });
+  }
+
+  let reply = 'Tell me a little more, and I will keep helping you.';
+  if(/\b(name is|my name|i am|i\'m)\b/i.test(lower)){
+    reply = 'Nice to meet you. Tell me a little more about yourself.';
+  } else if(/\b(hello|hi|hey)\b/i.test(lower)){
+    reply = 'Hi. Tell me what you want to practice today.';
+  } else if(/\b(bad|sad|confused|angry|worried)\b/i.test(lower)){
+    reply = 'I hear you. What is the hardest part for you right now?';
+  }
+
+  return { reply, corrections, pronunciation, vocab: [] };
 }
 
 /* ---------- Chat rendering ---------- */
@@ -1165,6 +1220,21 @@ function addCorrections(corr){
   });
   d.innerHTML=h; c.appendChild(d); scrollChat();
 }
+function addPronunciationFeedback(items){
+  if(!items || !items.length) return;
+  const c=$('chat');
+  const d=document.createElement('div');
+  d.className='corr-card';
+  d.style.background='var(--orange-bg)';
+  d.style.borderLeftColor='var(--orange)';
+  let h=`<div class="h" style="display:flex; align-items:center; gap:5px; color:var(--orange);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg> Pronunciation notes</div>`;
+  items.forEach(x=>{
+    h += `<div class="corr-item"><span class="fix">${escapeHTML(x.issue||'')}</span><span class="why">${escapeHTML(x.tip||'')}</span></div>`;
+  });
+  d.innerHTML=h;
+  c.appendChild(d);
+  scrollChat();
+}
 function addVocabSuggestions(vs){
   if(!vs || !vs.length) return;
   const c=$('chat');
@@ -1181,28 +1251,37 @@ function scrollChat(){ const s=$('screen-call'); if(s) s.scrollTop=s.scrollHeigh
 function escapeHTML(s){ return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 /* ---------- Conversation flow ---------- */
-async function handleUserSpeech(text){
+async function handleUserSpeech(text, speechMeta={}){
   if(!text.trim()) return;
   addUserBubble(text);
   history.push({role:'user', content:text});
   setOrb('thinking'); $('coachStatus').textContent='Thinking...';
   try{
-    const msgs=[{role:'system',content:coachSystemPrompt()}, ...history.slice(-10)];
+    const confidenceLine = speechMeta.confidence != null
+      ? `Speech recognition confidence: ${speechMeta.confidence.toFixed(2)}. If it is low, mention that you may have misheard part of the sentence and give one short pronunciation tip.`
+      : 'Speech recognition confidence: unknown.';
+    const msgs=[{role:'system',content:coachSystemPrompt()}, {role:'system', content: confidenceLine}, ...history.slice(-10)];
     const raw=await callAI(msgs, true);
     const out=parseAI(raw);
     const reply=out.reply || "Sorry, could you say that again?";
     history.push({role:'assistant', content:reply});
     addAIBubble(reply);
     addCorrections(out.corrections);
+    addPronunciationFeedback(out.pronunciation);
     addVocabSuggestions(out.vocab);
     $('coachStatus').textContent='Your turn — tap the mic to reply.';
     speak(reply);
   }catch(e){
-    const fallbackReply = 'I am having trouble connecting right now. Please try again in a moment.';
+    const fallback = buildLocalCoachFallback(text, speechMeta);
+    const reply = fallback.reply || 'Tell me a little more.';
+    history.push({role:'assistant', content:reply});
     setOrb('');
-    $('coachStatus').textContent=fallbackReply;
-    addAIBubble(fallbackReply);
-    speak(fallbackReply);
+    $('coachStatus').textContent='Free coaching mode';
+    addAIBubble(reply);
+    addCorrections(fallback.corrections);
+    addPronunciationFeedback(fallback.pronunciation);
+    addVocabSuggestions(fallback.vocab);
+    speak(reply);
   }
 }
 
@@ -1210,6 +1289,8 @@ async function handleUserSpeech(text){
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog=null, listening=false, handsfree=false;
 let recognitionText='';
+let recognitionConfidenceTotal=0;
+let recognitionConfidenceCount=0;
 let recognitionCancelled=false;
 function setOrb(state){
   const o=$('orb'); o.className='orb'+(state?(' '+state):'');
@@ -1240,6 +1321,8 @@ function startListen(){
   if(listening) return;
   clearTimeout(autoListenTimer);
   recognitionText='';
+  recognitionConfidenceTotal=0;
+  recognitionConfidenceCount=0;
   recognitionCancelled=false;
   recog=new SR(); recog.lang='en-US'; recog.interimResults=true; recog.maxAlternatives=1; recog.continuous=false;
   listening=true; setOrb('listening'); $('coachStatus').textContent='Listening... speak now';
@@ -1251,6 +1334,11 @@ function startListen(){
       if(result.isFinal){
         const chunk=result[0].transcript.trim();
         if(chunk) recognitionText += (recognitionText ? ' ' : '') + chunk;
+        const confidence = typeof result[0].confidence === 'number' ? result[0].confidence : null;
+        if(confidence != null){
+          recognitionConfidenceTotal += confidence;
+          recognitionConfidenceCount += 1;
+        }
       }
     }
   };
@@ -1263,7 +1351,11 @@ function startListen(){
     const text=recognitionText.trim();
     stopListenUI();
     if(!recognitionCancelled && text){
-      handleUserSpeech(text);
+      const confidence = recognitionConfidenceCount ? (recognitionConfidenceTotal / recognitionConfidenceCount) : null;
+      if(confidence != null && confidence < 0.65){
+        $('coachStatus').textContent='I may have misheard part of that, but I will still respond.';
+      }
+      handleUserSpeech(text, { confidence });
     }
   };
   try{ recog.start(); }catch(e){ stopListenUI(); }
@@ -1320,9 +1412,11 @@ function renderScenarios(){
 }
 async function kickoff(){
   if(settings.provider==='openrouter' && !curKey()){
-    const fallbackReply = 'I need an API key in Settings before I can start this conversation.';
-    addAIBubble(fallbackReply);
-    $('coachStatus').textContent = fallbackReply;
+    const fallback = buildLocalCoachFallback(history.map(x=>x.content).join(' '), {});
+    addAIBubble(fallback.reply);
+    addCorrections(fallback.corrections);
+    addPronunciationFeedback(fallback.pronunciation);
+    $('coachStatus').textContent = 'Free coaching mode';
     return;
   }
   setOrb('thinking');
@@ -1333,10 +1427,14 @@ async function kickoff(){
     addAIBubble(out.reply); $('coachStatus').textContent='Your turn — tap the mic.'; speak(out.reply);
   }catch(e){
     setOrb('');
-    const fallbackReply = 'I am having trouble starting the chat right now. Please try again in a moment.';
-    addAIBubble(fallbackReply);
-    $('coachStatus').textContent = fallbackReply;
-    speak(fallbackReply);
+    const fallback = buildLocalCoachFallback(history.map(x=>x.content).join(' '), {});
+    history.push({role:'assistant', content:fallback.reply});
+    addAIBubble(fallback.reply);
+    addCorrections(fallback.corrections);
+    addPronunciationFeedback(fallback.pronunciation);
+    addVocabSuggestions(fallback.vocab);
+    $('coachStatus').textContent = 'Free coaching mode';
+    speak(fallback.reply);
   }
 }
 

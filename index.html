@@ -1209,6 +1209,8 @@ async function handleUserSpeech(text){
 /* ---------- Speech recognition ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog=null, listening=false, handsfree=false;
+let recognitionText='';
+let recognitionCancelled=false;
 function setOrb(state){
   const o=$('orb'); o.className='orb'+(state?(' '+state):'');
   if (state === 'listening') {
@@ -1237,23 +1239,42 @@ function startListen(){
   if(!SR){ toast('Voice input needs Chrome or Edge'); return; }
   if(listening) return;
   clearTimeout(autoListenTimer);
-  recog=new SR(); recog.lang='en-US'; recog.interimResults=false; recog.maxAlternatives=1; recog.continuous=false;
+  recognitionText='';
+  recognitionCancelled=false;
+  recog=new SR(); recog.lang='en-US'; recog.interimResults=true; recog.maxAlternatives=1; recog.continuous=false;
   listening=true; setOrb('listening'); $('coachStatus').textContent='Listening... speak now';
   $('micBtn').innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></svg><span>Listening...</span>';
   $('micBtn').classList.add('rec');
-  recog.onresult=e=>{ const txt=e.results[0][0].transcript; stopListen(); handleUserSpeech(txt); };
-  recog.onerror=e=>{ stopListen(); if(e.error==='not-allowed'||e.error==='service-not-allowed'){ $('coachStatus').textContent='Microphone is blocked. Click the lock/🔒 icon in your browser address bar → allow Microphone, then reload. Or just type below.'; } else if(e.error==='network'){ $('coachStatus').textContent='Voice recognition failed. Note: Brave browser blocks Web Speech API. Please open http://localhost:8080 in Google Chrome or Microsoft Edge for voice chat.'; } else if(e.error!=='no-speech' && e.error!=='aborted'){ $('coachStatus').textContent='Mic error: '+e.error; } };
-  recog.onend=()=>{ if(listening) stopListen(); };
-  try{ recog.start(); }catch(e){ stopListen(); }
+  recog.onresult=e=>{
+    for(let i=e.resultIndex; i<e.results.length; i++){
+      const result=e.results[i];
+      if(result.isFinal){
+        const chunk=result[0].transcript.trim();
+        if(chunk) recognitionText += (recognitionText ? ' ' : '') + chunk;
+      }
+    }
+  };
+  recog.onerror=e=>{
+    recognitionCancelled=true;
+    stopListenUI();
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){ $('coachStatus').textContent='Microphone is blocked. Click the lock/🔒 icon in your browser address bar → allow Microphone, then reload. Or just type below.'; } else if(e.error==='network'){ $('coachStatus').textContent='Voice recognition failed. Note: Brave browser blocks Web Speech API. Please open http://localhost:8080 in Google Chrome or Microsoft Edge for voice chat.'; } else if(e.error!=='no-speech' && e.error!=='aborted'){ $('coachStatus').textContent='Mic error: '+e.error; }
+  };
+  recog.onend=()=>{
+    const text=recognitionText.trim();
+    stopListenUI();
+    if(!recognitionCancelled && text){
+      handleUserSpeech(text);
+    }
+  };
+  try{ recog.start(); }catch(e){ stopListenUI(); }
 }
-function stopListen(){
+function stopListenUI(){
   listening=false; setOrb('');
   clearTimeout(autoListenTimer);
   $('micBtn').innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span>Tap to speak</span>';
   $('micBtn').classList.remove('rec');
-  if(recog){ try{ recog.stop(); }catch(e){} }
 }
-$('micBtn').onclick=()=>{ if(listening) stopListen(); else { speechSynthesis.cancel(); startListen(); } };
+$('micBtn').onclick=()=>{ if(listening){ recognitionCancelled=true; if(recog){ try{ recog.abort(); }catch(e){} } stopListenUI(); } else { speechSynthesis.cancel(); startListen(); } };
 $('handsfreeBtn').onclick=()=>{
   handsfree=!handsfree;
   $('handsfreeBtn').innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Call: '+(handsfree?'On':'Off')+'</span>';

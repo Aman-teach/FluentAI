@@ -57,6 +57,7 @@ let handsfree = false;
 let silenceTimeout = null;
 
 const $ = id => document.getElementById(id);
+const setOrb = state => { const o = $('orb'); if (o) o.className = 'orb ' + state; };
 const PROVIDERS = {
   gemini: { label:'Google Gemini (AI Studio)', url:'/api/gemini', keyHint:'AQ...', keyLink:'https://aistudio.google.com/', models:[
     ['gemini-2.5-flash','Gemini 2.5 Flash (Super Fast & Free)'],

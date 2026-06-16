@@ -720,6 +720,19 @@ p.sub { color: var(--text-soft); font-size: 15px; margin: 0 0 24px; line-height:
       </div>
 
       <div class="settings-section" style="border-top: 1px solid var(--border); padding-top: 20px;">
+        <div class="panel-label" style="margin-bottom: 12px;">Supabase Sync</div>
+        <div class="field" style="margin-top:10px;">
+          <label>Project URL</label>
+          <input id="supabaseUrl" type="text" placeholder="https://your-project.supabase.co">
+        </div>
+        <div class="field">
+          <label>Anon Public Key</label>
+          <input id="supabaseAnonKey" type="password" placeholder="eyJ...">
+          <div class="hint">Words are saved to your free Supabase project and restored after refresh.</div>
+        </div>
+      </div>
+
+      <div class="settings-section" style="border-top: 1px solid var(--border); padding-top: 20px;">
         <div class="panel-label" style="margin-bottom: 12px;">Export / Import</div>
         <div class="row" style="margin-top:10px;">
           <button class="ghost" id="exportBtn">
@@ -1779,19 +1792,6 @@ function renderQuizCard(){
     </div>`;
   $('flash').onclick=()=>$('flash').classList.toggle('flip');
 }
-
-      <div class="settings-section" style="border-top: 1px solid var(--border); padding-top: 20px;">
-        <div class="panel-label" style="margin-bottom: 12px;">Supabase Sync</div>
-        <div class="field" style="margin-top:10px;">
-          <label>Project URL</label>
-          <input id="supabaseUrl" type="text" placeholder="https://your-project.supabase.co">
-        </div>
-        <div class="field">
-          <label>Anon Public Key</label>
-          <input id="supabaseAnonKey" type="password" placeholder="eyJ...">
-          <div class="hint">Words are saved to your free Supabase project and restored after refresh.</div>
-        </div>
-      </div>
 window.gradeCard=ok=>{
   const v=quizDeck[quizIdx];
   v.box = ok ? Math.min((v.box||0)+1,4) : 0;

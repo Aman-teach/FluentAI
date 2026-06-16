@@ -15,6 +15,9 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == '/api/nvidia':
             # NVIDIA NIM OpenAI-compatible endpoint
             url = 'https://integrate.api.nvidia.com/v1/chat/completions'
+        elif self.path == '/api/zerog':
+            # 0G Private Computer endpoint
+            url = 'https://router-api.0g.ai/v1/chat/completions'
 
         if url:
             try:
@@ -27,7 +30,12 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
                 # Support loading API keys from local environment variables if frontend hasn't provided one
                 if not auth_header or auth_header.strip() == 'Bearer' or auth_header.strip() == 'Bearer null':
                     import os
-                    env_var = 'GEMINI_API_KEY' if self.path == '/api/gemini' else 'NVIDIA_API_KEY'
+                    if self.path == '/api/gemini':
+                        env_var = 'GEMINI_API_KEY'
+                    elif self.path == '/api/zerog':
+                        env_var = 'ZEROG_API_KEY'
+                    else:
+                        env_var = 'NVIDIA_API_KEY'
                     env_key = os.environ.get(env_var)
                     if env_key:
                         auth_header = f"Bearer {env_key}"

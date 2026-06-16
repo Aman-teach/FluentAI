@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto+Mono:ital,wght@0,300..700;1,300..700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 /* ===== Design Tokens ===== */
 :root {
@@ -668,6 +669,7 @@ p.sub { color: var(--text-soft); font-size: 15px; margin: 0 0 24px; line-height:
             <option value="gemini">Google Gemini (AI Studio - Free & Fast)</option>
             <option value="openrouter">OpenRouter</option>
             <option value="nvidia">NVIDIA NIM (free dev API)</option>
+            <option value="zerog">0G Private Computer (0G.AI)</option>
           </select>
         </div>
         <div class="field">
@@ -805,22 +807,29 @@ const LS = {
   set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 };
 const DEFAULT_KEY = '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';
+const DEFAULT_ZEROG_KEY = 'sk-aee24ccc-250d-46b2-8000-7b2db778e6ed';
+const DEFAULT_SUPABASE_URL = 'https://kzjttdpbfghyhwrxqxkt.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6anR0ZHBiZmdoeWh3cnh4cWt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzYzNzcsImV4cCI6MjA5NzExMjM3N30.6k3FF8hyw5chltXP9rdfDWKr43vXX6cQj41x1F6yqek';
 let settings = LS.get('es_settings', {});
 try{ if(!settings || typeof settings!=='object') settings={};
   settings.keys = settings.keys || {};
   settings.keys.nvidia = settings.keys.nvidia || DEFAULT_KEY;
   if(typeof settings.keys.openrouter!=='string') settings.keys.openrouter = '';
   if(typeof settings.keys.gemini!=='string') settings.keys.gemini = '';
-  if(settings._v!==6){ settings.provider='nvidia'; settings.model='meta/llama-3.3-70b-instruct'; settings.level='B1'; settings._v=6; }
+  if(typeof settings.keys.zerog!=='string') settings.keys.zerog = DEFAULT_ZEROG_KEY;
+  settings.supabaseUrl = settings.supabaseUrl || DEFAULT_SUPABASE_URL;
+  settings.supabaseAnonKey = settings.supabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY;
+  if(settings._v!==7){ settings.provider='nvidia'; settings.model='meta/llama-3.3-70b-instruct'; settings.level='B1'; settings._v=7; }
   settings.provider = settings.provider || 'nvidia';
   settings.level = settings.level || 'B1';
   settings.rate = settings.rate || 0.95;
   settings.voiceURI = settings.voiceURI || '';
   delete settings.apiKey;
   LS.set('es_settings', settings);
-}catch(e){ settings.keys = settings.keys || {}; settings.keys.nvidia = settings.keys.nvidia || DEFAULT_KEY; settings.keys.openrouter = settings.keys.openrouter || ''; settings.keys.gemini = settings.keys.gemini || ''; settings.provider = settings.provider || 'nvidia'; settings.model = settings.model || 'meta/llama-3.3-70b-instruct'; settings.level = settings.level || 'B1'; settings.rate = settings.rate || 0.95; }
+}catch(e){ settings.keys = settings.keys || {}; settings.keys.nvidia = settings.keys.nvidia || DEFAULT_KEY; settings.keys.openrouter = settings.keys.openrouter || ''; settings.keys.gemini = settings.keys.gemini || ''; settings.keys.zerog = settings.keys.zerog || DEFAULT_ZEROG_KEY; settings.supabaseUrl = settings.supabaseUrl || DEFAULT_SUPABASE_URL; settings.supabaseAnonKey = settings.supabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY; settings.provider = settings.provider || 'nvidia'; settings.model = settings.model || 'meta/llama-3.3-70b-instruct'; settings.level = settings.level || 'B1'; settings.rate = settings.rate || 0.95; }
 function curKey(){ return (settings.keys && settings.keys[settings.provider]) || ''; }
 let vocab = LS.get('es_vocab', []);
+let supabaseClient = null;
 let history = []; // {role, content} for the AI
 let activeUtterance = null; // Prevent Chrome garbage collection of speaking voice
 let autoListenTimer = null;
@@ -845,6 +854,11 @@ const PROVIDERS = {
     ['nvidia/nvidia-nemotron-nano-9b-v2','Nemotron Nano 9B (Fastest)'],
     ['qwen/qwen2.5-7b-instruct','Qwen 2.5 7B (Fast)'],
     ['deepseek-ai/deepseek-v3.1','DeepSeek V3.1 (Smarter)']
+  ]},
+  zerog: { label:'0G Private Computer', url:'/api/zerog', keyHint:'sk-...', keyLink:'https://pc.0g.ai/', models:[
+    ['minimax-m3','MiniMax M3 (Decentralized Speech/NIM)'],
+    ['deepseek-v3','DeepSeek V3 (0G Router)'],
+    ['qwen3.7-max','Qwen 3.7 Max (0G Router)']
   ]}
 };
 function populateModels(){
@@ -855,6 +869,97 @@ function populateModels(){
   const kh=$('keyHint'); if(kh){ kh.innerHTML='Get a free key at <a href="'+prov.keyLink+'" target="_blank">'+prov.keyLink.replace(/^https?:\/\//,'').replace(/\/$/,'')+'</a>. Stored only on this device.'; }
 }
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
+
+function getDeviceId(){
+  let id = LS.get('es_device_id', '');
+  if(!id){
+    id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('device-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    LS.set('es_device_id', id);
+  }
+  return id;
+}
+
+function initSupabase(){
+  supabaseClient = null;
+  const url = (settings.supabaseUrl || '').trim();
+  const key = (settings.supabaseAnonKey || '').trim();
+  if(!window.supabase || !url || !key) return false;
+  try{
+    supabaseClient = window.supabase.createClient(url, key);
+    return true;
+  }catch(e){
+    console.warn('Supabase init failed', e);
+    supabaseClient = null;
+    return false;
+  }
+}
+
+function normalizeVocabRow(row){
+  return {
+    id: String(row.id),
+    word: row.word || '',
+    meaning: row.meaning || '',
+    example: row.example || '',
+    phonetic: row.phonetic || '',
+    box: Number(row.box || 0),
+    added: row.added ? Number(row.added) : Date.now(),
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString()
+  };
+}
+
+async function loadVocabFromSupabase(){
+  if(!supabaseClient) return false;
+  const { data, error } = await supabaseClient
+    .from('vocabulary_words')
+    .select('*')
+    .eq('browser_id', getDeviceId())
+    .order('added', { ascending: false });
+  if(error) throw error;
+  if(Array.isArray(data)){
+    vocab = data.map(normalizeVocabRow);
+    LS.set('es_vocab', vocab);
+    return true;
+  }
+  return false;
+}
+
+async function upsertVocabToSupabase(item){
+  if(!supabaseClient) return;
+  const payload = {
+    id: String(item.id),
+    browser_id: getDeviceId(),
+    word: item.word || '',
+    meaning: item.meaning || '',
+    example: item.example || '',
+    phonetic: item.phonetic || '',
+    box: Number(item.box || 0),
+    added: Number(item.added || Date.now()),
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await supabaseClient.from('vocabulary_words').upsert(payload, { onConflict: 'id' });
+  if(error) throw error;
+}
+
+async function deleteVocabFromSupabase(id){
+  if(!supabaseClient) return;
+  const { error } = await supabaseClient.from('vocabulary_words').delete().eq('id', String(id)).eq('browser_id', getDeviceId());
+  if(error) throw error;
+}
+
+async function loadVocabData(){
+  const localVocab = LS.get('es_vocab', []);
+  vocab = Array.isArray(localVocab) ? localVocab : [];
+  if(!supabaseClient) return;
+  try{
+    const loaded = await loadVocabFromSupabase();
+    if(!loaded && vocab.length){
+      await Promise.all(vocab.map(upsertVocabToSupabase));
+    }
+  }catch(e){
+    console.warn('Supabase vocab sync failed, using local cache', e);
+  }
+}
 
 /* ---------- Navigation ---------- */
 document.querySelectorAll('.nav button').forEach(b=>{
@@ -904,6 +1009,8 @@ function loadSettingsUI(){
   populateModels();
   $('level').value=settings.level||'B1';
   $('rate').value=settings.rate||0.95;
+  $('supabaseUrl').value=settings.supabaseUrl||DEFAULT_SUPABASE_URL;
+  $('supabaseAnonKey').value=settings.supabaseAnonKey||DEFAULT_SUPABASE_ANON_KEY;
   refreshKeyPill();
 }
 $('provider').onchange=()=>{ settings.provider=$('provider').value; $('apiKey').value=curKey(); populateModels(); refreshKeyPill(); LS.set('es_settings',settings); };
@@ -920,7 +1027,11 @@ $('saveSettings').onclick=()=>{
   settings.level=$('level').value;
   settings.rate=parseFloat($('rate').value);
   settings.voiceURI=$('voiceSel').value;
+  settings.supabaseUrl=$('supabaseUrl').value.trim();
+  settings.supabaseAnonKey=$('supabaseAnonKey').value.trim();
   LS.set('es_settings',settings); refreshKeyPill(); toast('Settings saved ✓');
+  initSupabase();
+  loadVocabData().then(()=>{ renderVocab(); updateStats(); }).catch(()=>{});
 };
 $('level').onchange=()=>{ settings.level=$('level').value; LS.set('es_settings',settings); };
 $('rate').onchange=()=>{ settings.rate=parseFloat($('rate').value); LS.set('es_settings',settings); };
@@ -1449,8 +1560,18 @@ function saveVocab(word, meaning, example, phonetic){
   const w=word.trim(); if(!w) return;
   const ex=vocab.find(v=>v.word.toLowerCase()===w.toLowerCase());
   const ph=(phonetic||'').trim();
-  if(ex){ ex.meaning=meaning||ex.meaning; ex.example=example||ex.example; if(ph) ex.phonetic=ph; }
-  else vocab.push({ id:Date.now()+Math.random(), word:w, meaning:meaning||'', example:example||'', phonetic:ph, box:0, added:Date.now() });
+  if(ex){
+    ex.meaning=meaning||ex.meaning;
+    ex.example=example||ex.example;
+    if(ph) ex.phonetic=ph;
+    ex.updated_at = new Date().toISOString();
+    void upsertVocabToSupabase(ex).catch(err=>console.warn('Supabase save failed', err));
+  }
+  else {
+    const item = { id:(crypto && crypto.randomUUID ? crypto.randomUUID() : ('w-' + Date.now() + '-' + Math.random().toString(36).slice(2))), word:w, meaning:meaning||'', example:example||'', phonetic:ph, box:0, added:Date.now(), created_at:new Date().toISOString(), updated_at:new Date().toISOString() };
+    vocab.push(item);
+    void upsertVocabToSupabase(item).catch(err=>console.warn('Supabase save failed', err));
+  }
   LS.set('es_vocab',vocab); renderVocab(); updateStats();
 }
 function updateStats(){
@@ -1506,7 +1627,7 @@ function speakWord(w){
   }, 40);
 }
 window.speakWord=speakWord;
-window.delWord=id=>{ vocab=vocab.filter(v=>String(v.id)!==String(id)); LS.set('es_vocab',vocab); renderVocab(); updateStats(); };
+window.delWord=id=>{ vocab=vocab.filter(v=>String(v.id)!==String(id)); LS.set('es_vocab',vocab); renderVocab(); updateStats(); void deleteVocabFromSupabase(id).catch(err=>console.warn('Supabase delete failed', err)); };
 window.editWord=id=>{ const v=vocab.find(x=>String(x.id)===String(id)); if(v) openWordModal(v); };
 
 /* word modal */
@@ -1527,7 +1648,7 @@ $('wordModal').onclick=e=>{ if(e.target===$('wordModal')) closeWordModal(); };
 $('wSave').onclick=()=>{
   const w=$('wWord').value.trim(); if(!w){ toast('Enter a word'); return; }
   const ph=$('wPhon').value.trim();
-  if(editing){ editing.word=w; editing.phonetic=ph; editing.meaning=$('wMean').value.trim(); editing.example=$('wEx').value.trim(); LS.set('es_vocab',vocab); renderVocab(); updateStats(); }
+  if(editing){ editing.word=w; editing.phonetic=ph; editing.meaning=$('wMean').value.trim(); editing.example=$('wEx').value.trim(); editing.updated_at = new Date().toISOString(); LS.set('es_vocab',vocab); renderVocab(); updateStats(); void upsertVocabToSupabase(editing).catch(err=>console.warn('Supabase save failed', err)); }
   else saveVocab(w,$('wMean').value.trim(),$('wEx').value.trim(),ph);
   closeWordModal(); toast('Saved ✓');
 };
@@ -1658,10 +1779,24 @@ function renderQuizCard(){
     </div>`;
   $('flash').onclick=()=>$('flash').classList.toggle('flip');
 }
+
+      <div class="settings-section" style="border-top: 1px solid var(--border); padding-top: 20px;">
+        <div class="panel-label" style="margin-bottom: 12px;">Supabase Sync</div>
+        <div class="field" style="margin-top:10px;">
+          <label>Project URL</label>
+          <input id="supabaseUrl" type="text" placeholder="https://your-project.supabase.co">
+        </div>
+        <div class="field">
+          <label>Anon Public Key</label>
+          <input id="supabaseAnonKey" type="password" placeholder="eyJ...">
+          <div class="hint">Words are saved to your free Supabase project and restored after refresh.</div>
+        </div>
+      </div>
 window.gradeCard=ok=>{
   const v=quizDeck[quizIdx];
   v.box = ok ? Math.min((v.box||0)+1,4) : 0;
   LS.set('es_vocab',vocab);
+  void upsertVocabToSupabase(v).catch(err=>console.warn('Supabase update failed', err));
   quizIdx++; renderQuizCard();
 };
 window.startQuiz=startQuiz;
@@ -1678,7 +1813,7 @@ $('importFile').onchange=e=>{
 };
 
 /* ---------- Init ---------- */
-loadSettingsUI(); loadVoices(); renderScenarios(); renderVocab(); updateStats();
+loadSettingsUI(); initSupabase(); loadVoices(); renderScenarios(); loadVocabData().then(()=>{ renderVocab(); updateStats(); }).catch(()=>{ renderVocab(); updateStats(); });
 if(!curKey() && settings.provider==='openrouter'){ 
   $('coachStatus').textContent='Welcome! Open Settings, keep provider on OpenRouter, paste your free key, then type or tap the mic to talk.'; 
 } else if(!curKey()){

@@ -18,6 +18,15 @@ FluentAI is a personal AI English conversation coach. It helps people practice s
    - `GEMINI_API_KEY`
    - `NVIDIA_API_KEY`
 
+## Supabase Setup
+
+1. Open your Supabase project.
+2. Go to the SQL editor and paste the contents of `supabase-schema.sql`.
+3. Save the project URL and anon public key in the app's Settings screen under `Supabase Sync`.
+4. Refresh the page and add a word to confirm the vocabulary is syncing.
+
+The app stores vocabulary in Supabase and keeps a local cache in the browser so your words survive refreshes.
+
 ## Local use
 
 Open `index.html` in a browser for the frontend, or run `server.py` locally if you want to use the Python proxy.

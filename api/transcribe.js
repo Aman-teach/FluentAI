@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     }
     const audioBuffer = Buffer.concat(chunks);
 
-    const response = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', {
+    const response = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&filler_words=true', {
       method: 'POST',
       headers: {
         'Content-Type': contentType,

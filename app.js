@@ -461,8 +461,30 @@ function parseAI(raw){
 }
 
 /* ---------- Chat rendering ---------- */
-function addUserBubble(text){
-  const c=$('chat'); const d=document.createElement('div'); d.className='msg user'; d.textContent=text; c.appendChild(d); scrollChat();
+function escapeRegex(string) {
+  return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+}
+
+function addUserBubble(text, lowConfidenceWords = []){
+  const c=$('chat'); const d=document.createElement('div'); d.className='msg user';
+  
+  if (Array.isArray(lowConfidenceWords) && lowConfidenceWords.length > 0) {
+    let html = escapeHTML(text);
+    // Unique the low confidence words (case-insensitive) to prevent duplicate highlight wrapping
+    const uniqueWords = [...new Set(lowConfidenceWords.map(w => w.toLowerCase()))];
+    uniqueWords.forEach(word => {
+      if(!word.trim()) return;
+      try {
+        const regex = new RegExp(`\\b(${escapeRegex(word)})\\b`, 'gi');
+        html = html.replace(regex, `<span class="low-conf-word" title="Pronunciation warning: low confidence">$1</span>`);
+      } catch(e){}
+    });
+    d.innerHTML = html;
+  } else {
+    d.textContent = text;
+  }
+  
+  c.appendChild(d); scrollChat();
 }
 function addAIBubble(text){
   const c=$('chat'); const d=document.createElement('div'); d.className='msg ai';
@@ -500,10 +522,16 @@ function scrollChat(){ const s=$('screen-call'); if(s) s.scrollTop=s.scrollHeigh
 function escapeHTML(s){ return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 /* ---------- Conversation flow ---------- */
-async function handleUserSpeech(text){
+async function handleUserSpeech(text, lowConfidenceWords = []){
   if(!text.trim()) return;
-  addUserBubble(text);
-  history.push({role:'user', content:text});
+  addUserBubble(text, lowConfidenceWords);
+  
+  let userMessageContent = text;
+  if (Array.isArray(lowConfidenceWords) && lowConfidenceWords.length > 0) {
+    userMessageContent += `\n\n[Pronunciation / Accent warning: The user spoke these words with low acoustic confidence: ${lowConfidenceWords.map(w => `"${w}"`).join(', ')}. Scrutinize their pronunciation, accent, or clarity in your response, and gently advise them on how to improve if relevant.]`;
+  }
+  
+  history.push({role:'user', content: userMessageContent});
   setOrb('thinking'); $('coachStatus').textContent='Thinking...';
   try{
     const msgs=[{role:'system',content:coachSystemPrompt()}, ...history.slice(-10)];
@@ -582,10 +610,17 @@ async function startListen(){
         }
         
         const data = await res.json();
-        const transcription = data.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
+        const alternative = data.results?.channels?.[0]?.alternatives?.[0];
+        const transcription = alternative?.transcript || '';
+        const words = alternative?.words || [];
+        
+        // Identify low-confidence words (less than 80% confidence)
+        const lowConfidenceWords = words
+          .filter(w => typeof w.confidence === 'number' && w.confidence < 0.80)
+          .map(w => w.word);
         
         if (transcription.trim()) {
-          handleUserSpeech(transcription);
+          handleUserSpeech(transcription, lowConfidenceWords);
         } else {
           setOrb('');
           $('coachStatus').textContent = "Didn't catch that. Tap the mic to speak again.";

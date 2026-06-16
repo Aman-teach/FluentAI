@@ -501,3 +501,16 @@ p.sub { color: var(--text-soft); font-size: 15px; margin: 0 0 24px; line-height:
   .nav { bottom: 14px; }
   .nav button { padding: 7px 11px; font-size: 10px; }
 }
+
+/* ===== Pronunciation warnings ===== */
+.low-conf-word {
+  border-bottom: 2px dotted #F59E0B;
+  cursor: help;
+  position: relative;
+  transition: all 0.2s;
+}
+.low-conf-word:hover {
+  color: #D97706;
+  background: rgba(245, 158, 11, 0.08);
+}
+

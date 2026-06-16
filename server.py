@@ -112,9 +112,10 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
                 
                 content_length = int(self.headers.get('Content-Length', 0))
                 post_data = self.rfile.read(content_length) if content_length > 0 else b''
+                print(f"[DEBUG] API request: path={self.path}, len={content_length}, body={post_data[:200]}")
                 
                 if self.path == '/api/transcribe':
-                    dg_url = 'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true'
+                    dg_url = 'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&filler_words=true'
                     content_type = self.headers.get('Content-Type', 'audio/webm')
                 else:
                     dg_url = 'https://api.deepgram.com/v1/speak?model=aura-asteria-en'
@@ -139,6 +140,7 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
                     
             except urllib.error.HTTPError as e:
                 err_data = e.read()
+                print(f"[DEBUG] Deepgram API HTTPError: status={e.code}, body={err_data}")
                 self.send_response(e.code)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()

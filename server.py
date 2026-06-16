@@ -3,8 +3,30 @@ import socketserver
 import urllib.request
 import urllib.error
 import sys
+import os
+import json
 
 PORT = 8080
+
+def load_dotenv():
+    try:
+        if os.path.exists('.env'):
+            with open('.env', 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' in line:
+                        k, v = line.split('=', 1)
+                        k = k.strip()
+                        v = v.strip().strip("'").strip('"')
+                        os.environ[k] = v
+            print("Loaded environment from .env file successfully.")
+    except Exception as e:
+        print("Warning: could not load .env file:", e)
+
+# Load environment variables from .env if present
+load_dotenv()
 
 class ProxyHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
@@ -72,9 +94,81 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header('Content-Type', 'text/plain')
                 self.end_headers()
                 self.wfile.write(str(e).encode('utf-8'))
+        elif self.path == '/api/transcribe' or self.path == '/api/speak':
+            try:
+                import os
+                dg_key = os.environ.get('DEEPGRAM_API_KEY')
+                if not dg_key:
+                    auth_header = self.headers.get('Authorization')
+                    if auth_header and auth_header.startswith('Bearer '):
+                        dg_key = auth_header.replace('Bearer ', '')
+                
+                if not dg_key:
+                    self.send_response(401)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(b'{"error": "DEEPGRAM_API_KEY not configured on server"}')
+                    return
+                
+                content_length = int(self.headers.get('Content-Length', 0))
+                post_data = self.rfile.read(content_length) if content_length > 0 else b''
+                
+                if self.path == '/api/transcribe':
+                    dg_url = 'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true'
+                    content_type = self.headers.get('Content-Type', 'audio/webm')
+                else:
+                    dg_url = 'https://api.deepgram.com/v1/speak?model=aura-asteria-en'
+                    content_type = 'application/json'
+                
+                req = urllib.request.Request(
+                    dg_url,
+                    data=post_data,
+                    headers={
+                        'Content-Type': content_type,
+                        'Authorization': f'Token {dg_key}'
+                    },
+                    method='POST'
+                )
+                
+                with urllib.request.urlopen(req, timeout=45) as response:
+                    res_data = response.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', response.headers.get('Content-Type', 'application/octet-stream'))
+                    self.end_headers()
+                    self.wfile.write(res_data)
+                    
+            except urllib.error.HTTPError as e:
+                err_data = e.read()
+                self.send_response(e.code)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(err_data)
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(str(e).encode('utf-8'))
         else:
             self.send_response(404)
             self.end_headers()
+
+    def do_GET(self):
+        if self.path == '/api/config':
+            supabase_url = os.environ.get('SUPABASE_URL', '')
+            supabase_anon_key = os.environ.get('SUPABASE_ANON_KEY', '')
+            
+            res_data = json.dumps({
+                'supabaseUrl': supabase_url,
+                'supabaseAnonKey': supabase_anon_key
+            }).encode('utf-8')
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin', '*'))
+            self.end_headers()
+            self.wfile.write(res_data)
+        else:
+            super().do_GET()
 
 # Set up the server
 handler = ProxyHandler

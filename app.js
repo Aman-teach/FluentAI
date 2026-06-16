@@ -452,12 +452,33 @@ Output JSON:
 Return ONLY valid minified JSON, no markdown, exactly in this format. If you identify useful new vocabulary words in the learner's or your response, suggest them in the "vocab" list and include their "word", "phonetic" (IPA transcription e.g. /rɪˈzɪliənt/), and "meaning". Use empty arrays when there is nothing worth flagging.`;
 }
 
+function stripThink(text) {
+  if (typeof text !== 'string') return text;
+  // Remove <think>...</think> tags and everything between them
+  let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // Also clean up any trailing open think blocks
+  clean = clean.replace(/<think>[\s\S]*/gi, '').trim();
+  return clean;
+}
+
 function parseAI(raw){
   if(!raw) return null;
   let s=raw.trim().replace(/^```(json)?/i,'').replace(/```$/,'').trim();
   const a=s.indexOf('{'), b=s.lastIndexOf('}');
-  if(a>=0 && b>a) s=s.slice(a,b+1);
-  try{ return JSON.parse(s); }catch(e){ return { reply: raw, corrections:[], vocab:[] }; }
+  if(a>=0 && b>a) {
+    s=s.slice(a,b+1);
+    try {
+      const parsed = JSON.parse(s);
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.reply === 'string') {
+          parsed.reply = stripThink(parsed.reply);
+        }
+        return parsed;
+      }
+    } catch(e){}
+  }
+  const cleanRaw = stripThink(raw);
+  return { reply: cleanRaw, corrections:[], vocab:[] };
 }
 
 /* ---------- Chat rendering ---------- */

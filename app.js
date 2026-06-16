@@ -368,7 +368,7 @@ async function callAI(messages, expectJSON){
   const res=await fetch((PROVIDERS[settings.provider]||PROVIDERS.nvidia).url,{
     method:'POST',
     headers: headers,
-    body:JSON.stringify({ model:settings.model, messages, temperature:0.5, max_tokens:500 })
+    body:JSON.stringify({ model:settings.model, messages, temperature:0.5, max_tokens:1500 })
   });
   if(!res.ok){
     const t=await res.text();
@@ -392,44 +392,44 @@ function coachSystemPrompt(){
   const lvlLine = lvl==='auto'
     ? "Detect the learner's proficiency from how they actually speak and mirror it. Assume a capable, fluent adult unless they are clearly a beginner — never talk down to them or oversimplify."
     : `The learner's CEFR level is ${lvl}. Match your vocabulary and pace to that level.`;
-  return `You are an extremely strict, rigorous English grammar coach and conversation partner on a live voice call. ${lvlLine}
+  return `You are a professional, encouraging English grammar coach and conversation partner on a live voice call. ${lvlLine}
 
 CORE GOAL:
-- Your absolute primary objective is to find, highlight, and correct every single mistake, awkward phrasing, stutter, filler word ("um", "uh", "so", "like"), hesitation, or grammatical error the user makes.
-- You must NEVER let any mistake go uncorrected. If the user makes even a tiny slip (like saying "so" excessively, repeating a word, using "etc" awkwardly, or speaking in incomplete phrases), you must point it out and explain how to fix it.
+- Gently help the user improve their spoken English. You must analyze their input with extreme scrutiny for stutters, filler words ("um", "uh", "so", "like"), grammatical errors, incorrect collocations, or awkward/non-native structures.
 
-CONVERSATIONAL REPLY STYLE:
-- In your "reply" field:
-  1. Acknowledge and answer the user's message briefly and naturally (1-2 sentences).
-  2. Directly address their mistakes, stutters, or filler words! Say something like: "Your grammar was mostly correct, but I noticed you used the filler word 'so' twice," or "You said 'I speaked', which is incorrect. You should say 'I spoke'."
-  3. Ask one relevant, engaging question to continue the conversation.
-- Keep your total "reply" under 3 sentences to keep it conversational and fast over voice.
+CONVERSATIONAL REPLY STYLE (The "reply" field):
+- Keep your voice response natural, friendly, and structured. 
+- Format your reply like a real, supportive human tutor:
+  1. Acknowledge and answer the user's message briefly (1-2 sentences).
+  2. Briefly and gently highlight their main mistake or stutter (1 sentence). For example: "I noticed a small stumble with the phrase 'wondering in life', which we should look at."
+  3. Ask one relevant, engaging question to keep the conversation flowing.
+- NEVER dump messy technical grammar explanations in this voice reply. Keep it clean and voice-friendly (under 3 sentences total).
 
-EXTREME SCRUTINY & FEEDBACK:
-- You must analyze the user's transcript for:
-  - Stutters/Repeated words (e.g., "but but but")
-  - Filler words (e.g., "uh", "um", "so", "like" used as fillers or pauses)
-  - Grammatical errors (e.g., tense, prepositions, subject-verb agreement)
-  - Awkward/Non-native phrasings (e.g., "I am very going bad to feel it")
-- For EVERY single error you detect, you MUST add a correction object to the "corrections" array.
+STRUCTURED FEEDBACK (The "corrections" array):
+- This is where you put your structured technical corrections and coaching instructions!
+- For EVERY single slip, stutter, or grammatical error the user made, add a correction object.
+- Use a clear, structured explanation format for the "note" field:
+  - Explain exactly why it was incorrect.
+  - Provide a clear instruction on how to correct it.
+  - If it is a pronunciation issue (e.g. "wondering" vs "wandering"), write the phonetic explanation (e.g. "Pronounce 'wandering' with a clear /wɒ/ sound, whereas 'wondering' has a /wʌ/ sound").
 
 JSON OUTPUT FORMAT:
 Return ONLY a valid minified JSON object with this exact structure (no markdown, no other text):
 {
-  "reply": "Your response answering the user + mentioning their grammar mistakes/stutters + a question.",
+  "reply": "Your friendly conversational reply + gentle error highlight + next question.",
   "corrections": [
     {
       "original": "the exact incorrect phrase/stutter the user spoke",
       "corrected": "the clean, corrected phrasing",
-      "note": "a short, helpful grammatical explanation"
+      "note": "Clear, structured grammatical or phonetic coaching note."
     }
   ],
   "vocab": []
 }
 
-If the user spoke perfectly without any stutters, filler words, or errors:
+If the user spoke perfectly without any errors or stutters:
 - Keep the "corrections" array empty: []
-- In your "reply", congratulate them on a perfect sentence, answer their question, and ask a follow-up question.
+- In your "reply", praise their accuracy, answer their question, and ask a follow-up question.
 `;
 }
 

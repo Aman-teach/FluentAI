@@ -56,8 +56,101 @@ let listening = false;
 let handsfree = false;
 let silenceTimeout = null;
 
+let speakAnim = null;
+let audioCtx = null;
+let analyser = null;
+let dataArray = null;
+let sourceNode = null;
+let visualizerAnim = null;
+
+// Sound effects synthesizer
+function playChime(type) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    const now = ctx.currentTime;
+    
+    if (type === 'start') {
+      // Upward chime (C5 to E5 to G5)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1); // E5
+      osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.2); // G5
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.12, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } else if (type === 'stop') {
+      // Downward chime (G5 to C5)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(783.99, now); // G5
+      osc.frequency.exponentialRampToValueAtTime(523.25, now + 0.15); // C5
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.08, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.start(now);
+      osc.stop(now + 0.28);
+    } else if (type === 'bubble') {
+      // Light bubble sound
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.06, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+  } catch (e) {
+    console.warn("Web Audio not supported or blocked: ", e);
+  }
+}
+
 const $ = id => document.getElementById(id);
-const setOrb = state => { const o = $('orb'); if (o) o.className = 'orb ' + state; };
+
+const setOrb = state => {
+  const o = $('orb');
+  if (!o) return;
+  o.className = 'orb ' + state;
+  
+  // Clear any existing speaking animation
+  if (speakAnim) {
+    cancelAnimationFrame(speakAnim);
+    speakAnim = null;
+  }
+  
+  // Clear any voice volume visualizer animation
+  if (visualizerAnim) {
+    cancelAnimationFrame(visualizerAnim);
+    visualizerAnim = null;
+  }
+  
+  // Reset transforms
+  o.style.transform = '';
+  const rings = document.querySelectorAll('.orb-ring');
+  rings.forEach(r => r.style.transform = '');
+  
+  if (state === 'speaking') {
+    // Simulated speech bounce
+    const simulateAI = () => {
+      if (o.className !== 'orb speaking') return;
+      const now = Date.now();
+      const scale = 1.05 + Math.sin(now * 0.012) * 0.08 + Math.cos(now * 0.007) * 0.04;
+      o.style.transform = `scale(${scale})`;
+      const r1 = document.querySelector('.orb-ring.ring-1');
+      const r2 = document.querySelector('.orb-ring.ring-2');
+      if (r1) r1.style.transform = `scale(${scale * 1.1})`;
+      if (r2) r2.style.transform = `scale(${scale * 1.25})`;
+      speakAnim = requestAnimationFrame(simulateAI);
+    };
+    simulateAI();
+  }
+};
 const PROVIDERS = {
   gemini: { label:'Google Gemini (AI Studio)', url:'/api/gemini', keyHint:'AQ...', keyLink:'https://aistudio.google.com/', models:[
     ['gemini-2.5-flash','Gemini 2.5 Flash (Super Fast & Free)'],
@@ -486,13 +579,38 @@ function addUserBubble(text, lowConfidenceWords = []){
     d.textContent = text;
   }
   
-  c.appendChild(d); scrollChat();
+  c.appendChild(d);
+  playChime('bubble'); // Play bubble pop sound
+  scrollChat();
 }
 function addAIBubble(text){
   const c=$('chat'); const d=document.createElement('div'); d.className='msg ai';
-  d.innerHTML=`<div>${escapeHTML(text)}</div><div class="replay">🔊 Tap to replay</div>`;
-  d.querySelector('.replay').onclick=()=>speak(text);
-  c.appendChild(d); scrollChat();
+  
+  const contentDiv = document.createElement('div');
+  const replayDiv = document.createElement('div');
+  replayDiv.className = 'replay';
+  replayDiv.innerHTML = '🔊 Tap to replay';
+  replayDiv.onclick = () => speak(text);
+  
+  d.appendChild(contentDiv);
+  d.appendChild(replayDiv);
+  c.appendChild(d);
+  
+  // Streaming/typewriter rendering effect
+  let i = 0;
+  contentDiv.textContent = '';
+  playChime('bubble'); // Play bubble pop sound at start of reply
+  
+  const speed = 10; // ms per char (super fast and fluid typing)
+  const typeWriter = () => {
+    if (i < text.length) {
+      contentDiv.textContent += text.charAt(i);
+      i++;
+      scrollChat();
+      setTimeout(typeWriter, speed);
+    }
+  };
+  typeWriter();
 }
 function addCorrections(corr){
   const c=$('chat');
@@ -501,12 +619,31 @@ function addCorrections(corr){
     p.innerHTML=`<span style="display:inline-flex; align-items:center; gap:6px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Perfect — no mistakes that time!</span>`;
     c.appendChild(p); scrollChat(); return;
   }
-  const d=document.createElement('div'); d.className='corr-card';
-  let h=`<div class="h" style="display:flex; align-items:center; gap:5px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Quick corrections</div>`;
-  corr.forEach(x=>{
-    h+=`<div class="corr-item"><span class="was">${escapeHTML(x.original||'')}</span> → <span class="fix">${escapeHTML(x.corrected||'')}</span><span class="why">${escapeHTML(x.note||'')}</span></div>`;
+  
+  const container = document.createElement('div');
+  container.className = 'corrections-container';
+  
+  corr.forEach(x => {
+    const card = document.createElement('div');
+    card.className = 'correction-card';
+    card.innerHTML = `
+      <div class="side-by-side">
+        <div class="speech-bubble-block original">
+          <span class="speech-bubble-label">What you said</span>
+          <span>${escapeHTML(x.original || '')}</span>
+        </div>
+        <div class="speech-bubble-block corrected">
+          <span class="speech-bubble-label">Better way</span>
+          <span>${escapeHTML(x.corrected || '')}</span>
+        </div>
+      </div>
+      ${x.note ? `<div class="note-block">${escapeHTML(x.note)}</div>` : ''}
+    `;
+    container.appendChild(card);
   });
-  d.innerHTML=h; c.appendChild(d); scrollChat();
+  
+  c.appendChild(container);
+  scrollChat();
 }
 function addVocabSuggestions(vs){
   if(!vs || !vs.length) return;
@@ -634,7 +771,48 @@ async function startListen(){
       }
     };
     
+    // Voice volume reactive visualizer
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 32;
+      const bufferLength = analyser.frequencyBinCount;
+      dataArray = new Uint8Array(bufferLength);
+      sourceNode = audioCtx.createMediaStreamSource(stream);
+      sourceNode.connect(analyser);
+      
+      const draw = () => {
+        if (!listening) return;
+        visualizerAnim = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        let average = sum / bufferLength; // 0 to 255
+        let scale = 1 + (average / 160); // reactive volume scaling factor
+        if (scale > 1.45) scale = 1.45;
+        
+        const orb = $('orb');
+        if (orb) orb.style.transform = `scale(${scale})`;
+        
+        const r1 = document.querySelector('.orb-ring.ring-1');
+        const r2 = document.querySelector('.orb-ring.ring-2');
+        if (r1) r1.style.transform = `scale(${scale * 1.15})`;
+        if (r2) r2.style.transform = `scale(${scale * 1.3})`;
+      };
+      draw();
+    } catch(err) {
+      console.warn("Could not start audio visualizer: ", err);
+    }
+    
     listening = true;
+    playChime('start'); // Play trigger chime
     setOrb('listening');
     $('coachStatus').textContent = 'Listening... speak now';
     $('micBtn').innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/></svg><span>Tap to stop</span>';
@@ -666,6 +844,7 @@ function stopListen(){
   if(!listening) return;
   listening = false;
   clearTimeout(silenceTimeout);
+  playChime('stop'); // Play end chime
   setOrb('');
   $('micBtn').innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg><span>Tap to speak</span>';
   $('micBtn').classList.remove('rec');
@@ -677,7 +856,9 @@ function stopListen(){
   }
 }
 
-$('micBtn').onclick=()=>{ if(listening) stopListen(); else startListen(); };
+const toggleListen = () => { if(listening) stopListen(); else startListen(); };
+$('micBtn').onclick = toggleListen;
+if ($('orb')) $('orb').onclick = toggleListen;
 $('handsfreeBtn').onclick=()=>{
   handsfree=!handsfree;
   $('handsfreeBtn').innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Call: '+(handsfree?'On':'Off')+'</span>';
@@ -993,8 +1174,25 @@ $('importFile').onchange=e=>{
   const r=new FileReader(); r.onload=()=>{ try{ const arr=JSON.parse(r.result); if(Array.isArray(arr)){ arr.forEach(x=>{ if(x.word) saveVocab(x.word,x.meaning,x.example,x.phonetic||''); }); toast('Imported ✓'); } }catch(err){ toast('Invalid file'); } }; r.readAsText(f);
 };
 
+/* ---------- Theme Handler ---------- */
+function initTheme() {
+  const toggleBtn = $('themeToggle');
+  if (!toggleBtn) return;
+  
+  let currentTheme = localStorage.getItem('es_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  
+  toggleBtn.onclick = () => {
+    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    localStorage.setItem('es_theme', currentTheme);
+    toast(`Switched to ${currentTheme} mode`);
+  };
+}
+
 /* ---------- Init ---------- */
 async function initApp() {
+  initTheme();
   loadSettingsUI();
   renderScenarios();
   

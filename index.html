@@ -20,50 +20,67 @@
 <div class="topbar">
   <div class="brand">Fluent<span class="brand-accent">AI</span></div>
   <div class="spacer"></div>
+  <button id="themeToggle" class="theme-btn" title="Toggle Theme" style="margin-right:12px;">
+    <svg class="sun-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    <svg class="moon-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+  </button>
   <span class="pill" id="keyPill">No API Key</span>
 </div>
 
 <!-- ================= CALL COACH ================= -->
 <div class="screen active" id="screen-call">
-  <div class="wrap-grid">
-    <!-- Left Panel: Control Station -->
-    <div class="control-panel">
-      <div class="coach-card">
-        <div class="panel-label">Coach Status</div>
-        <div class="coach-stage">
-          <div class="orb-wrapper">
-            <div class="orb" id="orb">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-            </div>
-          </div>
-          <div class="coach-status" id="coachStatus">Tap the mic and start talking. I'll reply and gently fix your mistakes.</div>
-        </div>
-
+  <div class="wrap-grid three-col">
+    <!-- Left Column: Topic & Voice Controls -->
+    <div class="col-left">
+      <!-- Card 1: Scenario Grid -->
+      <div class="scenario-selector-card glass-card">
         <div class="panel-label">Topic / Role-play</div>
         <div class="scenario-grid" id="scenarioRow"></div>
+      </div>
 
+      <!-- Card 2: Voice Controls -->
+      <div class="voice-controller-card glass-card">
         <div class="panel-label">Voice Controls</div>
         <div class="controls-section">
-          <button class="mic-btn" id="micBtn">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-            <span>Tap to speak</span>
-          </button>
-          <div class="controls-row">
+          <div class="controls-row" style="grid-template-columns: 1fr; gap: 8px;">
             <button class="ghost" id="handsfreeBtn">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               <span>Call: Off</span>
             </button>
-            <button class="ghost" id="clearChat" title="Clear conversation">
+            <button class="ghost" id="clearChat" title="Clear conversation" style="margin-top: 2px;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-              <span>Clear</span>
+              <span>Clear Journal</span>
             </button>
           </div>
-          <div class="aux-controls">
-            <button class="ghost btn-sm" id="enableMic">
+          <div class="aux-controls" style="margin-top: 6px;">
+            <button class="ghost btn-sm" id="enableMic" style="width: 100%;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
               <span>Setup Microphone</span>
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Column: Coach Studio (Mic Orb & Status) -->
+    <div class="col-center">
+      <div class="coach-studio-card glass-card">
+        <div class="panel-label" style="text-align: center;">Coach Status</div>
+        <div class="coach-stage">
+          <div class="orb-wrapper" style="margin: 10px 0;">
+            <div class="orb-ring ring-1"></div>
+            <div class="orb-ring ring-2"></div>
+            <div class="orb-ring ring-3"></div>
+            <div class="orb" id="orb">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+            </div>
+          </div>
+          <div class="coach-status" id="coachStatus" style="font-size: 13.5px; text-align: center; margin-top: 4px; line-height: 1.5; color: var(--text-soft);">Tap the mic orb or click below to talk.</div>
+          
+          <button class="mic-btn" id="micBtn" style="margin-top: 14px; width: 100%;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+            <span>Tap to speak</span>
+          </button>
         </div>
       </div>
     </div>
@@ -91,9 +108,9 @@
 <div class="screen" id="screen-vocab">
   <div class="wrap-grid">
     <!-- Left Column: Controls & Stats -->
-    <div class="control-panel">
+    <div class="control-panel modular">
       <!-- Dark contrast Stats card -->
-      <div class="coach-card" style="background: var(--dark-panel); color: #fff; border-color: var(--dark-panel); box-shadow: none;">
+      <div class="coach-card widget-stats" style="background: var(--dark-panel); color: #fff; border-color: var(--dark-panel); box-shadow: none;">
         <div class="panel-label" style="color: var(--text-faint); border-bottom-color: rgba(255,255,255,0.08); margin-bottom: 12px;">Vocabulary Stats</div>
         <div class="statgrid" style="margin-bottom: 0;">
           <div class="stat" style="background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08);">
@@ -111,10 +128,10 @@
         </div>
       </div>
 
-      <!-- Mode switcher & Add button card -->
-      <div class="coach-card">
+      <!-- Mode switcher & Add button (modular card layout) -->
+      <div class="glass-card">
         <div class="panel-label" style="margin-bottom: 12px;">Practice Mode</div>
-        <div class="seg" id="vocabSeg" style="margin-bottom: 0;">
+        <div class="seg" id="vocabSeg" style="margin-bottom: 16px;">
           <button class="on" data-mode="list">Word List</button>
           <button data-mode="quiz">Quiz Cards</button>
         </div>
@@ -141,13 +158,14 @@
 <div class="screen" id="screen-settings">
   <div class="wrap-grid">
     <!-- Left Column: Connection Status Sidebar -->
-    <div class="control-panel">
-      <div class="coach-card" style="background: var(--dark-panel); color: #fff; border-color: var(--dark-panel); box-shadow: none;">
+    <div class="control-panel modular">
+      <div class="coach-card widget-status" style="background: var(--dark-panel); color: #fff; border-color: var(--dark-panel); box-shadow: none;">
         <div class="panel-label" style="color: var(--text-faint); border-bottom-color: rgba(255,255,255,0.08); margin-bottom: 12px;">Connection Status</div>
         <div style="font-family: var(--font-display); font-size: 32px; font-style: italic; margin-top: 8px; line-height: 1.2;" id="settingsStatusTitle">Connected</div>
         <p style="font-size: 12.5px; color: var(--text-faint); margin: 6px 0 0 0;" id="settingsStatusDesc">API keys are saved locally on this browser session.</p>
       </div>
-      <div class="coach-card">
+      
+      <div class="glass-card">
         <div class="panel-label" style="margin-bottom: 12px;">Settings Info</div>
         <p style="font-size: 13px; color: var(--text-soft); margin: 0; line-height: 1.5;">Configure your credentials to power voice analysis, vocabulary extraction, and speech corrections.</p>
       </div>
